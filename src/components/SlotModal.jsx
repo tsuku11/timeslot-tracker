@@ -11,16 +11,24 @@ function parseTime(str) {
   return h * 60 + (m || 0);
 }
 
-function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, onClose }) {
+function SlotModal({ startDate, endDate, startMin, endMin, users, hourlyRate, onSave, onClose }) {
   const [userId, setUserId] = useState(users[0]?.id || '');
   const [startTime, setStartTime] = useState(fmtMin(startMin));
   const [endTime, setEndTime] = useState(fmtMin(endMin));
+  const [slotStartDate, setSlotStartDate] = useState(startDate);
+  const [slotEndDate, setSlotEndDate] = useState(endDate);
   const [rentRate, setRentRate] = useState(hourlyRate);
 
   const start = parseTime(startTime);
   const end = parseTime(endTime);
-  const durationMins = end - start;
-  const hours = durationMins / 60;
+
+  // Calculate total minutes (cross-day)
+  const daysDiff = Math.max(0, Math.round(
+    (new Date(slotEndDate + 'T00:00:00').getTime() - new Date(slotStartDate + 'T00:00:00').getTime()) / 86400000
+  ));
+  const totalMins = daysDiff * 1440 + end - start;
+  const hours = totalMins / 60;
+  const isCrossDay = slotStartDate !== slotEndDate;
 
   const selectedUser = users.find(u => u.id === userId);
   const isRenter = selectedUser?.isRenter;
@@ -28,10 +36,13 @@ function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, o
   const rentLoss = isRenter ? (hourlyRate - Number(rentRate)) * hours : 0;
   const regularUsers = users.filter(u => !u.isRenter);
 
+  const isValid = totalMins > 0 && userId && slotEndDate >= slotStartDate;
+
   const handleSave = () => {
-    if (durationMins <= 0 || !userId) return;
+    if (!isValid) return;
     const slot = {
-      date: currentDate,
+      startDate: slotStartDate,
+      endDate: slotEndDate,
       startMin: start,
       endMin: end,
       userId,
@@ -40,6 +51,11 @@ function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, o
       slot.rentRate = Number(rentRate);
     }
     onSave(slot);
+  };
+
+  const formatDateShort = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
   };
 
   return (
@@ -55,35 +71,65 @@ function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, o
         </div>
 
         <div className="modal-body">
-          {/* Time inputs */}
-          <div className="time-select">
-            <div className="time-field">
+          {/* Date & Time inputs */}
+          <div className="datetime-row">
+            <div className="datetime-block">
               <label>Начало</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
-                className="input time-input"
-              />
+              <div className="datetime-inputs">
+                <input
+                  type="date"
+                  value={slotStartDate}
+                  onChange={e => {
+                    setSlotStartDate(e.target.value);
+                    if (e.target.value > slotEndDate) setSlotEndDate(e.target.value);
+                  }}
+                  className="input date-input-field"
+                />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="input time-input"
+                  step="60"
+                />
+              </div>
             </div>
-            <div className="time-arrow">
+            <div className="datetime-arrow">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="5" y1="12" x2="19" y2="12"/>
                 <polyline points="12,5 19,12 12,19"/>
               </svg>
             </div>
-            <div className="time-field">
+            <div className="datetime-block">
               <label>Конец</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                className="input time-input"
-              />
+              <div className="datetime-inputs">
+                <input
+                  type="date"
+                  value={slotEndDate}
+                  onChange={e => {
+                    if (e.target.value >= slotStartDate) setSlotEndDate(e.target.value);
+                  }}
+                  className="input date-input-field"
+                  min={slotStartDate}
+                />
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="input time-input"
+                  step="60"
+                />
+              </div>
             </div>
           </div>
 
-          {durationMins <= 0 && (
+          {isCrossDay && (
+            <div className="info-msg">
+              Межсуточный слот: {formatDateShort(slotStartDate)} {startTime} → {formatDateShort(slotEndDate)} {endTime}
+            </div>
+          )}
+
+          {totalMins <= 0 && (
             <div className="error-msg">Время конца должно быть позже начала</div>
           )}
 
@@ -115,7 +161,7 @@ function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, o
             </div>
           </div>
 
-          {/* Rent rate — only when renter selected */}
+          {/* Rent rate */}
           {isRenter && (
             <div className="field">
               <label>За сколько сдаём ($/ч)</label>
@@ -138,15 +184,21 @@ function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, o
           <div className="cost-preview">
             <div className="cost-row">
               <span>Длительность</span>
-              <span className="cost-value">{durationMins > 0 ? `${hours.toFixed(1)} ч` : '—'}</span>
+              <span className="cost-value">{totalMins > 0 ? `${hours.toFixed(1)} ч` : '—'}</span>
             </div>
-            {!isRenter && durationMins > 0 && (
+            {isCrossDay && totalMins > 0 && (
+              <div className="cost-row">
+                <span>Дней</span>
+                <span className="cost-value">{daysDiff + 1}</span>
+              </div>
+            )}
+            {!isRenter && totalMins > 0 && (
               <div className="cost-row">
                 <span>Стоимость</span>
                 <span className="cost-value negative">−${cost.toFixed(2)}</span>
               </div>
             )}
-            {isRenter && durationMins > 0 && (
+            {isRenter && totalMins > 0 && (
               <>
                 <div className="cost-row">
                   <span>Ставка аренды</span>
@@ -181,7 +233,7 @@ function SlotModal({ startMin, endMin, users, hourlyRate, currentDate, onSave, o
           <button
             className="btn-primary"
             onClick={handleSave}
-            disabled={durationMins <= 0 || !userId}
+            disabled={!isValid}
           >
             Добавить
           </button>

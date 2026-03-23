@@ -17,13 +17,12 @@ app.use(express.static(path.join(__dirname, '..', 'dist')));
 
 function readData() {
   if (!fs.existsSync(DATA_FILE)) {
-    const renterId = uuidv4();
     const initial = {
       users: [
         { id: uuidv4(), name: 'Пользователь 1', color: '#6366f1', balance: 100, isRenter: false },
         { id: uuidv4(), name: 'Пользователь 2', color: '#f43f5e', balance: 100, isRenter: false },
         { id: uuidv4(), name: 'Пользователь 3', color: '#10b981', balance: 100, isRenter: false },
-        { id: renterId, name: 'Арендатор', color: '#f59e0b', balance: 0, isRenter: true },
+        { id: uuidv4(), name: 'Арендатор', color: '#f59e0b', balance: 0, isRenter: true },
       ],
       slots: [],
       settings: { hourlyRate: 6 },
@@ -38,8 +37,14 @@ function writeData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-function minsToHours(mins) {
-  return mins / 60;
+// Compute total minutes of a slot (cross-day aware)
+function slotTotalMinutes(slot) {
+  const startDate = slot.startDate || slot.date;
+  const endDate = slot.endDate || slot.date;
+  const startDay = new Date(startDate + 'T00:00:00').getTime();
+  const endDay = new Date(endDate + 'T00:00:00').getTime();
+  const daysDiff = Math.round((endDay - startDay) / 86400000);
+  return daysDiff * 1440 + slot.endMin - slot.startMin;
 }
 
 app.get('/api/data', (req, res) => {
@@ -84,13 +89,13 @@ app.delete('/api/users/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// POST add slot
-// For renter slots: rentRate is stored per-slot
+// POST add slot (cross-day aware)
 app.post('/api/slots', (req, res) => {
   const data = readData();
   const slot = {
     id: uuidv4(),
-    date: req.body.date,
+    startDate: req.body.startDate || req.body.date,
+    endDate: req.body.endDate || req.body.date,
     startMin: req.body.startMin,
     endMin: req.body.endMin,
     userId: req.body.userId,
@@ -100,10 +105,10 @@ app.post('/api/slots', (req, res) => {
   const user = data.users.find(u => u.id === slot.userId);
   if (!user) return res.status(400).json({ error: 'User not found' });
 
-  const hours = minsToHours(slot.endMin - slot.startMin);
+  const totalMins = slotTotalMinutes(slot);
+  const hours = totalMins / 60;
 
   if (user.isRenter) {
-    // Renter: no money from renter. If rentRate < hourlyRate, loss split among regular users
     const rentRate = slot.rentRate != null ? slot.rentRate : data.settings.hourlyRate;
     const loss = (data.settings.hourlyRate - rentRate) * hours;
     if (loss > 0) {
@@ -117,7 +122,6 @@ app.post('/api/slots', (req, res) => {
       }
     }
   } else {
-    // Regular user: deduct balance
     const cost = hours * data.settings.hourlyRate;
     const idx = data.users.findIndex(u => u.id === user.id);
     data.users[idx].balance -= cost;
@@ -134,7 +138,8 @@ app.delete('/api/slots/:id', (req, res) => {
   if (!slot) return res.status(404).json({ error: 'Slot not found' });
 
   const user = data.users.find(u => u.id === slot.userId);
-  const hours = minsToHours(slot.endMin - slot.startMin);
+  const totalMins = slotTotalMinutes(slot);
+  const hours = totalMins / 60;
 
   if (user) {
     if (user.isRenter) {

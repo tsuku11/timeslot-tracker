@@ -211,9 +211,14 @@ body {
   background: rgba(245,158,11,0.15); padding: 1px 6px;
   border-radius: 10px; width: fit-content;
 }
+.tl-balance {
+  font-size: 11px; font-weight: 500; color: var(--success);
+}
 
 /* Grid scroll area */
-.timeline-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; position: relative; }
+.timeline-scroll {
+  flex: 1; overflow-x: auto; overflow-y: hidden; position: relative;
+}
 
 .timeline-grid { position: relative; min-width: 100%; height: 100%; }
 
@@ -235,7 +240,10 @@ body {
 }
 
 /* Rows */
-.timeline-rows { display: flex; flex-direction: column; }
+.timeline-rows {
+  display: flex; flex-direction: column;
+  cursor: crosshair;
+}
 
 .timeline-row {
   height: 56px; position: relative;
@@ -245,9 +253,31 @@ body {
 .hour-cell {
   position: absolute; top: 0; bottom: 0;
   border-right: 1px solid rgba(42,42,61,0.5);
-  cursor: pointer; transition: background var(--transition);
+  transition: background var(--transition);
 }
-.hour-cell:hover { background: rgba(99,102,241,0.04); }
+
+/* Drag selection */
+.drag-selection {
+  position: absolute; top: 2px; bottom: 2px;
+  background: rgba(99, 102, 241, 0.2);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  animation: pulseSelection 1s ease infinite;
+}
+.drag-label {
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: rgba(15, 15, 19, 0.8);
+  padding: 2px 8px; border-radius: 4px;
+  white-space: nowrap;
+}
+
+@keyframes pulseSelection {
+  0%, 100% { background: rgba(99, 102, 241, 0.15); }
+  50% { background: rgba(99, 102, 241, 0.25); }
+}
 
 /* Slot blocks */
 .slot-block {
@@ -265,6 +295,15 @@ body {
 }
 
 .slot-block.renter { border-style: dashed; }
+.slot-block.cross-day {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(255,255,255,0.03) 4px,
+    rgba(255,255,255,0.03) 8px
+  );
+}
 
 .slot-block-label {
   font-size: 11px; font-weight: 600; color: var(--text);
@@ -289,20 +328,14 @@ body {
 
 .current-time-header {
   position: absolute; top: 0; z-index: 15; pointer-events: none;
-  display: flex; flex-direction: column; align-items: center;
+  transform: translateX(-50%);
 }
 
 .current-time-tag {
   font-size: 10px; font-weight: 700; color: white;
   background: var(--danger); padding: 2px 6px;
-  border-radius: 4px; transform: translateX(-50%);
+  border-radius: 4px;
   white-space: nowrap;
-}
-
-.current-time-line-full {
-  width: 2px; background: var(--danger);
-  position: absolute; top: 20px; bottom: 0;
-  height: 2000px;
 }
 
 /* Tooltip */
@@ -320,6 +353,21 @@ body {
 .tooltip-hours { font-size: 12px; color: var(--text-secondary); }
 .tooltip-cost { font-size: 12px; color: var(--danger); font-weight: 600; }
 .tooltip-rent { font-size: 12px; color: var(--warning); }
+.tooltip-crossday {
+  font-size: 10px; color: var(--accent); font-weight: 600;
+  background: rgba(99,102,241,0.15); padding: 1px 6px;
+  border-radius: 10px; width: fit-content; margin-top: 2px;
+}
+
+/* Swipe hint */
+.swipe-hint {
+  display: flex; justify-content: center; padding: 4px;
+  background: var(--bg-secondary); border-top: 1px solid var(--border);
+}
+.swipe-hint span {
+  font-size: 11px; color: var(--text-muted); font-weight: 500;
+  opacity: 0.6;
+}
 
 /* Summary */
 .timeline-summary {
@@ -358,8 +406,9 @@ body {
 
 .modal {
   background: var(--bg-secondary); border: 1px solid var(--border);
-  border-radius: 16px; width: 100%; max-width: 480px;
+  border-radius: 16px; width: 100%; max-width: 520px;
   box-shadow: var(--shadow); animation: slideUp 0.25s ease;
+  max-height: 90vh; overflow-y: auto;
 }
 
 .modal-header {
@@ -375,25 +424,39 @@ body {
   padding: 16px 24px; border-top: 1px solid var(--border);
 }
 
-/* Type toggle */
-.type-toggle {
-  display: flex; background: var(--bg-tertiary);
-  border-radius: var(--radius); padding: 3px; gap: 3px;
+/* DateTime row in modal */
+.datetime-row {
+  display: flex; align-items: flex-end; gap: 10px;
 }
-.toggle-btn {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  gap: 8px; padding: 8px 14px; border: none;
-  background: transparent; color: var(--text-secondary);
-  font-size: 13px; font-weight: 500;
-  border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition);
+.datetime-block { flex: 1; }
+.datetime-block label {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--text-secondary); margin-bottom: 6px;
 }
-.toggle-btn:hover { color: var(--text); }
-.toggle-btn.active {
-  background: var(--accent); color: white;
-  box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+.datetime-inputs {
+  display: flex; gap: 6px;
+}
+.datetime-inputs .date-input-field {
+  flex: 1.2;
+  font-size: 13px !important;
+  padding: 8px 10px;
+}
+.datetime-inputs .time-input {
+  flex: 1;
+  font-size: 14px !important;
+  padding: 8px 10px;
+}
+.datetime-arrow {
+  color: var(--text-muted); padding-bottom: 8px; flex-shrink: 0;
 }
 
-/* Time select */
+.info-msg {
+  font-size: 13px; color: var(--accent); padding: 8px 12px;
+  background: rgba(99,102,241,0.1); border-radius: var(--radius-sm);
+  border: 1px solid rgba(99,102,241,0.2);
+}
+
+/* Time select (legacy compat) */
 .time-select { display: flex; align-items: flex-end; gap: 12px; }
 .time-field { flex: 1; }
 .time-field label {
@@ -408,7 +471,7 @@ body {
 }
 
 /* User select */
-.user-select { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.user-select { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
 .user-option {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; background: var(--bg-tertiary);

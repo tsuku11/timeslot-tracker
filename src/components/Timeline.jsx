@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 const TOTAL_MINUTES = 1440;
 
@@ -8,17 +8,22 @@ function fmtMin(m) {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
-function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDeleteSlot }) {
+function Timeline({ slots, users, currentDate, hourlyRate, onSelectRange, onDeleteSlot }) {
   const [hoveredSlot, setHoveredSlot] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const gridRef = useRef(null);
+
+  // Drag-to-select state
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState(null);
+  const [dragEnd, setDragEnd] = useState(null);
+  const dragStartRef = useRef(null);
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
   const isToday = currentDate === todayStr;
   const currentMin = isToday ? now.getHours() * 60 + now.getMinutes() : -1;
 
-  // Update current time every minute
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!isToday) return;
@@ -30,31 +35,73 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
 
   const pct = (min) => (min / TOTAL_MINUTES) * 100;
 
-  const handleGridClick = (e) => {
-    if (!gridRef.current) return;
+  const getMinFromX = useCallback((clientX) => {
+    if (!gridRef.current) return 0;
     const rect = gridRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const ratio = x / rect.width;
-    const clickedMin = Math.round(ratio * TOTAL_MINUTES);
-    const snapped = Math.round(clickedMin / 5) * 5;
-    onClickTime(Math.max(0, Math.min(snapped, 1380)));
-  };
+    const x = clientX - rect.left + gridRef.current.parentElement.scrollLeft;
+    const totalWidth = gridRef.current.scrollWidth;
+    const ratio = x / totalWidth;
+    return Math.max(0, Math.min(1440, Math.round(ratio * TOTAL_MINUTES)));
+  }, []);
 
-  // Group slots by user rows
-  const userRows = users.filter(u => {
-    return slots.some(s => s.userId === u.id);
-  });
+  // Drag handlers
+  const handleMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    // Don't start drag on slot blocks
+    if (e.target.closest('.slot-block')) return;
+    const min = getMinFromX(e.clientX);
+    setDragging(true);
+    setDragStart(min);
+    setDragEnd(min);
+    dragStartRef.current = min;
+    e.preventDefault();
+  }, [getMinFromX]);
 
-  // Add users who have no slots but are regular users (show empty rows)
+  const handleMouseMove = useCallback((e) => {
+    if (!dragging) return;
+    const min = getMinFromX(e.clientX);
+    setDragEnd(min);
+  }, [dragging, getMinFromX]);
+
+  const handleMouseUp = useCallback((e) => {
+    if (!dragging) return;
+    setDragging(false);
+    const min = getMinFromX(e.clientX);
+    const start = Math.min(dragStartRef.current, min);
+    const end = Math.max(dragStartRef.current, min);
+    if (end - start >= 5) {
+      onSelectRange(start, end);
+    }
+    setDragStart(null);
+    setDragEnd(null);
+  }, [dragging, getMinFromX, onSelectRange]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => handleMouseMove(e);
+    const onUp = (e) => handleMouseUp(e);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragging, handleMouseMove, handleMouseUp]);
+
+  // Selection range
+  const selStart = dragStart !== null && dragEnd !== null ? Math.min(dragStart, dragEnd) : null;
+  const selEnd = dragStart !== null && dragEnd !== null ? Math.max(dragStart, dragEnd) : null;
+
   const allRelevantUsers = [...users];
 
   return (
     <div className="timeline">
-      {/* Horizontal time axis */}
       <div className="timeline-container">
-        {/* User labels on left */}
+        {/* Left labels */}
         <div className="timeline-labels">
-          <div className="timeline-label-header">Часы</div>
+          <div className="timeline-label-header">
+            <span>Часы</span>
+          </div>
           {allRelevantUsers.map(u => (
             <div key={u.id} className="timeline-label">
               <div className="tl-avatar" style={{ backgroundColor: u.color }}>
@@ -63,6 +110,7 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
               <div className="tl-info">
                 <span className="tl-name">{u.name}</span>
                 {u.isRenter && <span className="tl-renter-badge">Аренда</span>}
+                {!u.isRenter && <span className="tl-balance">${u.balance.toFixed(2)}</span>}
               </div>
             </div>
           ))}
@@ -71,21 +119,23 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
         {/* Grid area */}
         <div className="timeline-scroll">
           <div className="timeline-grid" ref={gridRef}>
-            {/* Hour markers on top */}
+            {/* Hour markers */}
             <div className="timeline-hours">
               {Array.from({ length: 25 }, (_, i) => (
-                <div
-                  key={i}
-                  className="hour-marker"
-                  style={{ left: `${pct(i * 60)}%` }}
-                >
+                <div key={i} className="hour-marker" style={{ left: `${pct(i * 60)}%` }}>
                   <span className="hour-marker-text">{fmtMin(i * 60 === 1440 ? 0 : i * 60)}</span>
                 </div>
               ))}
+              {/* Current time on header */}
+              {isToday && currentMin >= 0 && (
+                <div className="current-time-header" style={{ left: `${pct(currentMin)}%` }}>
+                  <div className="current-time-tag">{fmtMin(currentMin)}</div>
+                </div>
+              )}
             </div>
 
-            {/* User rows with slots */}
-            <div className="timeline-rows">
+            {/* User rows */}
+            <div className="timeline-rows" onMouseDown={handleMouseDown}>
               {allRelevantUsers.map(user => {
                 const userSlots = slots.filter(s => s.userId === user.id);
                 return (
@@ -96,21 +146,37 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
                         key={i}
                         className="hour-cell"
                         style={{ left: `${pct(i * 60)}%`, width: `${pct(60)}%` }}
-                        onClick={handleGridClick}
                       />
                     ))}
 
+                    {/* Drag selection overlay */}
+                    {dragging && selStart !== null && selEnd !== null && selEnd - selStart >= 5 && (
+                      <div
+                        className="drag-selection"
+                        style={{
+                          left: `${pct(selStart)}%`,
+                          width: `${pct(selEnd - selStart)}%`,
+                        }}
+                      >
+                        <span className="drag-label">{fmtMin(selStart)} — {fmtMin(selEnd)}</span>
+                      </div>
+                    )}
+
                     {/* Slot blocks */}
                     {userSlots.map(slot => {
-                      const left = pct(slot.startMin);
-                      const width = pct(slot.endMin - slot.startMin);
-                      const hours = (slot.endMin - slot.startMin) / 60;
+                      const left = pct(slot.visStart);
+                      const width = pct(slot.visEnd - slot.visStart);
+                      const totalMins = slot.visEnd - slot.visStart;
+                      const hours = totalMins / 60;
                       const isRenter = user.isRenter;
+                      const sd = slot.startDate || slot.date;
+                      const ed = slot.endDate || slot.date;
+                      const isCrossDay = sd !== ed;
 
                       return (
                         <div
                           key={slot.id}
-                          className={`slot-block ${isRenter ? 'renter' : ''}`}
+                          className={`slot-block ${isRenter ? 'renter' : ''} ${isCrossDay ? 'cross-day' : ''}`}
                           style={{
                             left: `${left}%`,
                             width: `${width}%`,
@@ -124,17 +190,20 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
                               x: rect.left + rect.width / 2,
                               y: rect.top - 8,
                               user: user.name,
-                              time: `${fmtMin(slot.startMin)} — ${fmtMin(slot.endMin)}`,
+                              time: isCrossDay
+                                ? `${sd} ${fmtMin(slot.startMin)} — ${ed} ${fmtMin(slot.endMin)}`
+                                : `${fmtMin(slot.visStart)} — ${fmtMin(slot.visEnd)}`,
                               hours: hours.toFixed(1),
                               cost: isRenter ? null : (hours * hourlyRate).toFixed(2),
                               isRenter,
                               rentRate: isRenter && slot.rentRate != null ? slot.rentRate : null,
+                              isCrossDay,
                             });
                           }}
                           onMouseLeave={() => { setHoveredSlot(null); setTooltip(null); }}
                         >
                           <span className="slot-block-label">
-                            {fmtMin(slot.startMin)}–{fmtMin(slot.endMin)}
+                            {fmtMin(slot.visStart)}–{fmtMin(slot.visEnd)}
                           </span>
                           {hoveredSlot === slot.id && (
                             <button
@@ -156,14 +225,6 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
                 );
               })}
             </div>
-
-            {/* Current time on the hour header */}
-            {isToday && currentMin >= 0 && (
-              <div className="current-time-header" style={{ left: `${pct(currentMin)}%` }}>
-                <div className="current-time-tag">{fmtMin(currentMin)}</div>
-                <div className="current-time-line-full" />
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -178,15 +239,21 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
           {tooltip.isRenter && tooltip.rentRate != null && (
             <div className="tooltip-rent">Ставка: ${tooltip.rentRate}/ч</div>
           )}
+          {tooltip.isCrossDay && <div className="tooltip-crossday">Межсуточный слот</div>}
         </div>
       )}
 
-      {/* Summary bar */}
+      {/* Day swipe hint */}
+      <div className="swipe-hint">
+        <span>← → листать дни</span>
+      </div>
+
+      {/* Summary */}
       <div className="timeline-summary">
         <div className="summary-items">
           {users.map(user => {
             const userSlots = slots.filter(s => s.userId === user.id);
-            const totalMins = userSlots.reduce((sum, s) => sum + (s.endMin - s.startMin), 0);
+            const totalMins = userSlots.reduce((sum, s) => sum + (s.visEnd - s.visStart), 0);
             const totalHours = totalMins / 60;
             if (totalMins === 0) return null;
             return (
@@ -205,7 +272,7 @@ function Timeline({ slots, users, currentDate, hourlyRate, onClickTime, onDelete
           })}
           <div className="summary-total">
             {(() => {
-              const totalMins = slots.reduce((sum, s) => sum + (s.endMin - s.startMin), 0);
+              const totalMins = slots.reduce((sum, s) => sum + (s.visEnd - s.visStart), 0);
               const totalHours = totalMins / 60;
               return (
                 <>
