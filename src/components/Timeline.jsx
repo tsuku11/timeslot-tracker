@@ -94,9 +94,10 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
 
   // Convert scroll X to globalMin (minutes since first day in array)
   const xToGlobalMin = useCallback((clientX) => {
-    if (!scrollRef.current || !rowsRef.current) return 0;
+    if (!rowsRef.current) return 0;
     const rect = rowsRef.current.getBoundingClientRect();
-    const x = clientX - rect.left + scrollRef.current.scrollLeft;
+    // rect.left already accounts for scroll, no need to add scrollLeft
+    const x = clientX - rect.left;
     const globalMin = (x / totalWidth) * (TOTAL_DAYS * TOTAL_MINUTES);
     return Math.max(0, Math.min(globalMin, TOTAL_DAYS * TOTAL_MINUTES));
   }, [totalWidth]);
