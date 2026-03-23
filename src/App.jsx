@@ -70,8 +70,8 @@ function App() {
     fetchData();
   };
 
-  const openModal = (startDate, startMin, endDate, endMin) => {
-    setModal({ startDate, startMin, endDate, endMin });
+  const openModal = (startDate, startMin, endDate, endMin, userId) => {
+    setModal({ startDate, startMin, endDate, endMin, userId: userId || null });
   };
 
   return (
@@ -129,6 +129,7 @@ function App() {
           endDate={modal.endDate}
           startMin={modal.startMin}
           endMin={modal.endMin}
+          preselectedUserId={modal.userId}
           users={data.users}
           hourlyRate={data.settings.hourlyRate}
           onSave={addSlot}

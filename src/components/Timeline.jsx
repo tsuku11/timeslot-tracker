@@ -47,6 +47,7 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
   const [dragStartPos, setDragStartPos] = useState(null); // { globalMin }
   const [dragEndPos, setDragEndPos] = useState(null);
   const dragStartRef = useRef(null);
+  const dragUserRef = useRef(null);
 
   // Generate day list
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -114,6 +115,10 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return;
     if (e.target.closest('.slot-block')) return;
+    // Detect which user row was clicked
+    const row = e.target.closest('.timeline-row');
+    const userId = row ? row.dataset.userId : null;
+    dragUserRef.current = userId;
     const gm = xToGlobalMin(e.clientX);
     setDragging(true);
     setDragStartPos(gm);
@@ -137,7 +142,7 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
     if (en - s >= 5) {
       const startDM = globalMinToDateMin(s);
       const endDM = globalMinToDateMin(en);
-      onSelectRange(startDM.date, startDM.min, endDM.date, endDM.min);
+      onSelectRange(startDM.date, startDM.min, endDM.date, endDM.min, dragUserRef.current);
     }
     setDragStartPos(null);
     setDragEndPos(null);
@@ -285,7 +290,7 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
               {users.map(user => {
                 const userSlots = slots.filter(s => s.userId === user.id);
                 return (
-                  <div key={user.id} className="timeline-row">
+                  <div key={user.id} className="timeline-row" data-user-id={user.id}>
                     {/* Day separators */}
                     {days.map((day, dayIdx) => (
                       <div

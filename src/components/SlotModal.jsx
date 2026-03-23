@@ -11,8 +11,8 @@ function parseTime(str) {
   return h * 60 + (m || 0);
 }
 
-function SlotModal({ startDate, endDate, startMin, endMin, users, hourlyRate, onSave, onClose }) {
-  const [userId, setUserId] = useState(users[0]?.id || '');
+function SlotModal({ startDate, endDate, startMin, endMin, preselectedUserId, users, hourlyRate, onSave, onClose }) {
+  const [userId, setUserId] = useState(preselectedUserId || users[0]?.id || '');
   const [startTime, setStartTime] = useState(fmtMin(startMin));
   const [endTime, setEndTime] = useState(fmtMin(endMin));
   const [slotStartDate, setSlotStartDate] = useState(startDate);
