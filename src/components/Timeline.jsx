@@ -365,8 +365,8 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
                       );
                     })}
 
-                    {/* Drag selection */}
-                    {dragging && selStartPx !== null && selWidthPx > 3 && (
+                    {/* Drag selection — only on the row where drag started */}
+                    {dragging && selStartPx !== null && selWidthPx > 3 && dragUserRef.current === user.id && (
                       <div
                         className="drag-selection"
                         style={{ left: `${selStartPx}px`, width: `${selWidthPx}px` }}
