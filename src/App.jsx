@@ -36,7 +36,15 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(slot),
     });
-    fetchData();
+    setModal(null);
+  };
+
+  const updateSlot = async (id, slot) => {
+    await fetch(`${API}/slots/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(slot),
+    });
     setModal(null);
   };
 
@@ -78,7 +86,18 @@ function App() {
   };
 
   const openModal = (startDate, startMin, endDate, endMin, userId) => {
-    setModal({ startDate, startMin, endDate, endMin, userId: userId || null });
+    setModal({ startDate, startMin, endDate, endMin, userId: userId || null, editingSlot: null });
+  };
+
+  const openEditModal = (slot) => {
+    setModal({
+      startDate: slot.startDate,
+      startMin: slot.startMin,
+      endDate: slot.endDate,
+      endMin: slot.endMin,
+      userId: slot.userId,
+      editingSlot: slot,
+    });
   };
 
   return (
@@ -128,6 +147,7 @@ function App() {
           hourlyRate={data.settings.hourlyRate}
           onSelectRange={openModal}
           onDeleteSlot={deleteSlot}
+          onEditSlot={openEditModal}
         />
       </div>
 
@@ -138,9 +158,12 @@ function App() {
           startMin={modal.startMin}
           endMin={modal.endMin}
           preselectedUserId={modal.userId}
+          editingSlot={modal.editingSlot}
           users={data.users}
           hourlyRate={data.settings.hourlyRate}
-          onSave={addSlot}
+          onSave={modal.editingSlot
+            ? (slot) => updateSlot(modal.editingSlot.id, slot)
+            : addSlot}
           onClose={() => setModal(null)}
         />
       )}

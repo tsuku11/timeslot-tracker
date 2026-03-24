@@ -11,7 +11,8 @@ function parseTime(str) {
   return h * 60 + (m || 0);
 }
 
-function SlotModal({ startDate, endDate, startMin, endMin, preselectedUserId, users, hourlyRate, onSave, onClose }) {
+function SlotModal({ startDate, endDate, startMin, endMin, preselectedUserId, editingSlot, users, hourlyRate, onSave, onClose }) {
+  const isEditing = !!editingSlot;
   const [userId, setUserId] = useState(preselectedUserId || users[0]?.id || '');
   const [startTime, setStartTime] = useState(fmtMin(startMin));
   const [endTime, setEndTime] = useState(fmtMin(endMin));
@@ -62,7 +63,7 @@ function SlotModal({ startDate, endDate, startMin, endMin, preselectedUserId, us
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Добавить слот</h2>
+          <h2>{isEditing ? 'Редактировать слот' : 'Добавить слот'}</h2>
           <button className="btn-icon" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -235,7 +236,7 @@ function SlotModal({ startDate, endDate, startMin, endMin, preselectedUserId, us
             onClick={handleSave}
             disabled={!isValid}
           >
-            Добавить
+            {isEditing ? 'Сохранить' : 'Добавить'}
           </button>
         </div>
       </div>

@@ -372,6 +372,18 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+.slot-edit {
+  position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: rgba(99,102,241,0.4); color: #a5b4fc;
+  border-radius: 50%; cursor: pointer; font-size: 12px; font-weight: 700;
+  transition: all var(--transition); line-height: 1;
+  opacity: 0;
+}
+.slot-block:hover .slot-edit { opacity: 1; }
+.slot-edit:hover { background: #6366f1; color: white; }
+
 .slot-delete {
   position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
   width: 20px; height: 20px;

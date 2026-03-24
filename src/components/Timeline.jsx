@@ -38,7 +38,7 @@ function daysBetween(a, b) {
   return Math.round((db - da) / 86400000);
 }
 
-function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
+function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot, onEditSlot }) {
   const scrollRef = useRef(null);
   const rowsRef = useRef(null);
   const [hoveredSlot, setHoveredSlot] = useState(null);
@@ -356,14 +356,21 @@ function Timeline({ slots, users, hourlyRate, onSelectRange, onDeleteSlot }) {
                             {fmtMin(slot.startMin)}–{fmtMin(slot.endMin)}
                             {isCrossDay && ` (${daysBetween(sd, ed) + 1}д)`}
                           </span>
-                          {hoveredSlot === slot.id && (
+                          {hoveredSlot === slot.id && (<>
+                            <button
+                              className="slot-edit"
+                              onClick={(e) => { e.stopPropagation(); onEditSlot(slot); }}
+                              title="Редактировать"
+                            >
+                              ✎
+                            </button>
                             <button
                               className="slot-delete"
                               onClick={(e) => { e.stopPropagation(); onDeleteSlot(slot.id); }}
                             >
                               ×
                             </button>
-                          )}
+                          </>)}
                         </div>
                       );
                     })}

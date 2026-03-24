@@ -156,6 +156,71 @@ app.post('/api/slots', (req, res) => {
   res.json({ slot, users: data.users });
 });
 
+// PUT update slot: reverse old effect, apply new effect
+app.put('/api/slots/:id', (req, res) => {
+  const data = readData();
+  const oldSlot = data.slots.find(s => s.id === req.params.id);
+  if (!oldSlot) return res.status(404).json({ error: 'Slot not found' });
+
+  // Reverse old slot effect
+  const oldUser = data.users.find(u => u.id === oldSlot.userId);
+  const oldMins = slotTotalMinutes(oldSlot);
+  const oldHours = oldMins / 60;
+  if (oldUser) {
+    if (oldUser.isRenter) {
+      const oldRentRate = oldSlot.rentRate != null ? oldSlot.rentRate : data.settings.hourlyRate;
+      const oldLoss = (data.settings.hourlyRate - oldRentRate) * oldHours;
+      if (oldLoss > 0) {
+        const regularUsers = data.users.filter(u => !u.isRenter);
+        const perUser = oldLoss / regularUsers.length;
+        regularUsers.forEach(ru => {
+          const idx = data.users.findIndex(u => u.id === ru.id);
+          data.users[idx].balance += perUser;
+        });
+      }
+    } else {
+      const idx = data.users.findIndex(u => u.id === oldUser.id);
+      data.users[idx].balance += oldHours * data.settings.hourlyRate;
+    }
+  }
+
+  // Apply new slot
+  const newSlot = {
+    id: oldSlot.id,
+    startDate: req.body.startDate || req.body.date,
+    endDate: req.body.endDate || req.body.date,
+    startMin: req.body.startMin,
+    endMin: req.body.endMin,
+    userId: req.body.userId,
+    rentRate: req.body.rentRate != null ? req.body.rentRate : null,
+  };
+  const newUser = data.users.find(u => u.id === newSlot.userId);
+  if (!newUser) return res.status(400).json({ error: 'User not found' });
+  const newMins = slotTotalMinutes(newSlot);
+  const newHours = newMins / 60;
+  if (newUser.isRenter) {
+    const rentRate = newSlot.rentRate != null ? newSlot.rentRate : data.settings.hourlyRate;
+    const loss = (data.settings.hourlyRate - rentRate) * newHours;
+    if (loss > 0) {
+      const regularUsers = data.users.filter(u => !u.isRenter);
+      const perUser = loss / regularUsers.length;
+      regularUsers.forEach(ru => {
+        const idx = data.users.findIndex(u => u.id === ru.id);
+        data.users[idx].balance -= perUser;
+      });
+    }
+  } else {
+    const idx = data.users.findIndex(u => u.id === newUser.id);
+    data.users[idx].balance -= newHours * data.settings.hourlyRate;
+  }
+
+  const slotIdx = data.slots.findIndex(s => s.id === req.params.id);
+  data.slots[slotIdx] = newSlot;
+  writeData(data);
+  broadcast(data);
+  res.json({ slot: newSlot, users: data.users });
+});
+
 app.delete('/api/slots/:id', (req, res) => {
   const data = readData();
   const slot = data.slots.find(s => s.id === req.params.id);
