@@ -15,6 +15,25 @@ app.use(express.json());
 
 app.use(express.static(path.join(__dirname, '..', 'dist')));
 
+// SSE clients
+const sseClients = new Set();
+
+function broadcast(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(msg); } catch {}
+  }
+}
+
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
 function readData() {
   if (!fs.existsSync(DATA_FILE)) {
     const initial = {
@@ -55,6 +74,7 @@ app.put('/api/settings', (req, res) => {
   const data = readData();
   data.settings = { ...data.settings, ...req.body };
   writeData(data);
+  broadcast(data);
   res.json(data.settings);
 });
 
@@ -69,6 +89,7 @@ app.post('/api/users', (req, res) => {
   };
   data.users.push(user);
   writeData(data);
+  broadcast(data);
   res.json(user);
 });
 
@@ -78,6 +99,7 @@ app.put('/api/users/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
   data.users[idx] = { ...data.users[idx], ...req.body };
   writeData(data);
+  broadcast(data);
   res.json(data.users[idx]);
 });
 
@@ -86,6 +108,7 @@ app.delete('/api/users/:id', (req, res) => {
   data.users = data.users.filter(u => u.id !== req.params.id);
   data.slots = data.slots.filter(s => s.userId !== req.params.id);
   writeData(data);
+  broadcast(data);
   res.json({ ok: true });
 });
 
@@ -129,6 +152,7 @@ app.post('/api/slots', (req, res) => {
 
   data.slots.push(slot);
   writeData(data);
+  broadcast(data);
   res.json({ slot, users: data.users });
 });
 
@@ -164,6 +188,7 @@ app.delete('/api/slots/:id', (req, res) => {
 
   data.slots = data.slots.filter(s => s.id !== req.params.id);
   writeData(data);
+  broadcast(data);
   res.json({ ok: true, users: data.users });
 });
 

@@ -21,7 +21,14 @@ function App() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    const es = new EventSource(`${API}/events`);
+    es.onmessage = (e) => {
+      try { setData(JSON.parse(e.data)); } catch {}
+    };
+    return () => es.close();
+  }, [fetchData]);
 
   const addSlot = async (slot) => {
     await fetch(`${API}/slots`, {
