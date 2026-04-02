@@ -287,19 +287,46 @@ async function sendTelegram(text) {
   }
 }
 
-// Track which slots were already notified to avoid spam
-const notifiedEnding = new Set();  // slot.id — notified "ending in 10 min"
-let lastGapNotifiedAt = 0;          // timestamp — last "no slot" notification
+// ── Notification state ──────────────────────────────────────────────────────
+// Persisted to disk so restarts don't lose track
+const NOTIF_FILE = path.join(__dirname, 'notif_state.json');
 
-function getSlotCoverageAt(slots, todayStr, nowMin) {
+function loadNotifState() {
+  try {
+    if (fs.existsSync(NOTIF_FILE)) return JSON.parse(fs.readFileSync(NOTIF_FILE, 'utf-8'));
+  } catch {}
+  return { notifiedEnding: [], lastGapNotifiedAt: 0 };
+}
+function saveNotifState(state) {
+  try { fs.writeFileSync(NOTIF_FILE, JSON.stringify(state)); } catch {}
+}
+
+let notifState = loadNotifState();
+// notifState.notifiedEnding — array of slot ids already notified
+// notifState.lastGapNotifiedAt — ms timestamp
+
+function isNotifiedEnding(id) { return notifState.notifiedEnding.includes(id); }
+function markNotifiedEnding(id) {
+  if (!notifState.notifiedEnding.includes(id)) {
+    notifState.notifiedEnding.push(id);
+    saveNotifState(notifState);
+  }
+}
+function cleanupNotifState(slots) {
+  // Remove old slot ids that no longer exist
+  const ids = slots.map(s => s.id);
+  notifState.notifiedEnding = notifState.notifiedEnding.filter(id => ids.includes(id));
+  saveNotifState(notifState);
+}
+
+function getSlotCoverageAt(slots, todayStr, atMin) {
   return slots.filter(slot => {
     const sd = slot.startDate || slot.date;
     const ed = slot.endDate || slot.date;
-    // Slot covers today
     if (sd > todayStr || ed < todayStr) return false;
     const startM = sd < todayStr ? 0 : slot.startMin;
     const endM   = ed > todayStr ? 1440 : slot.endMin;
-    return startM <= nowMin && nowMin < endM;
+    return startM <= atMin && atMin < endM;
   });
 }
 
@@ -309,48 +336,53 @@ function checkNotifications() {
   const todayStr = now.toISOString().slice(0, 10);
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
-  // 1) Slot ending soon (within 10 min window: 9–11 min left)
+  console.log(`[notify] check at ${fmtMin(nowMin)} — slots today: ${data.slots.filter(s => (s.startDate||s.date) <= todayStr && (s.endDate||s.date) >= todayStr).length}`);
+
+  // 1) Slot ending soon: fire when 5–14 min left (wide window, survives restarts)
   data.slots.forEach(slot => {
     const sd = slot.startDate || slot.date;
     const ed = slot.endDate || slot.date;
-    if (ed !== todayStr) return; // only slots ending today
-    if (sd > todayStr) return;   // hasn't started yet on another day
+    if (ed !== todayStr) return;
+    if (sd > todayStr) return;
 
     const minsLeft = slot.endMin - nowMin;
-    if (minsLeft >= 9 && minsLeft <= 11 && !notifiedEnding.has(slot.id)) {
-      notifiedEnding.add(slot.id);
+    if (minsLeft >= 5 && minsLeft <= 14 && !isNotifiedEnding(slot.id)) {
+      markNotifiedEnding(slot.id);
       const user = data.users.find(u => u.id === slot.userId);
       const name = user ? user.name : 'Неизвестный';
+      console.log(`[notify] sending end-soon for slot ${slot.id}, ${name}, minsLeft=${minsLeft}`);
       sendTelegram(
-        `⏰ <b>Слот заканчивается через ~10 минут</b>\n` +
+        `⏰ <b>Слот заканчивается через ~${minsLeft} мин</b>\n` +
         `👤 ${name}\n` +
         `🕐 До <b>${fmtMin(slot.endMin)}</b>`
       );
     }
-    // Clean up old notifications so they can re-trigger on a new day
-    if (minsLeft < -60) notifiedEnding.delete(slot.id);
   });
 
-  // 2) No slot covers the NEXT 10 minutes → alert once per 30 min max
-  const in10Min = nowMin + 10;
+  cleanupNotifState(data.slots);
+
+  // 2) No slot for current + next 10 min → alert (throttle 30 min)
   const coverNow  = getSlotCoverageAt(data.slots, todayStr, nowMin).length > 0;
-  const coverSoon = getSlotCoverageAt(data.slots, todayStr, in10Min <= 1439 ? in10Min : 1439).length > 0;
+  const coverSoon = getSlotCoverageAt(data.slots, todayStr, Math.min(nowMin + 10, 1439)).length > 0;
 
   if (!coverNow && !coverSoon) {
-    const elapsed = Date.now() - lastGapNotifiedAt;
+    const elapsed = Date.now() - notifState.lastGapNotifiedAt;
     if (elapsed > 30 * 60 * 1000) {
-      lastGapNotifiedAt = Date.now();
+      notifState.lastGapNotifiedAt = Date.now();
+      saveNotifState(notifState);
+      console.log(`[notify] sending gap alert at ${fmtMin(nowMin)}`);
       sendTelegram(
         `⚠️ <b>Свободное время не занято!</b>\n` +
-        `Сейчас <b>${fmtMin(nowMin)}</b> — ни у кого нет активного или ближайшего слота.\n` +
+        `Сейчас <b>${fmtMin(nowMin)}</b> — следующие 10 минут никем не заняты.\n` +
         `Не забудьте назначить время!`
       );
     }
   }
 }
 
-// Run every minute
-setInterval(checkNotifications, 60 * 1000);
+// Run every 30 sec + immediately on start
+checkNotifications();
+setInterval(checkNotifications, 30 * 1000);
 
 const PORT = process.env.PORT || 6767;
 app.listen(PORT, () => {
