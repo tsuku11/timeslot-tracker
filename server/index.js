@@ -9,6 +9,14 @@ import { v4 as uuidv4 } from 'uuid';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+// Returns local date string "YYYY-MM-DD" respecting TZ env var
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(__dirname, 'data.json');
@@ -364,7 +372,7 @@ function getSlotCoverageAt(slots, todayStr, atMin) {
 function checkNotifications() {
   const data = readData();
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = localDateStr(now);   // local date, not UTC
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   console.log(`[notify] check at ${fmtMin(nowMin)} — slots today: ${data.slots.filter(s => (s.startDate||s.date) <= todayStr && (s.endDate||s.date) >= todayStr).length}`);
