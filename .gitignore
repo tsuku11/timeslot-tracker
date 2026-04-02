@@ -11,6 +11,7 @@ node_modules
 dist
 server/data.json
 .claude
+.env
 dist-ssr
 *.local
 
