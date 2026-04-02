@@ -307,18 +307,15 @@ function fmtSlotMsg(slot, user, hourlyRate) {
   return `👤 ${name}\n🕐 ${timeStr}\n⏱ ${hours} ч${costLine}`;
 }
 
-async function sendTelegram(text) {
+function sendTelegram(text) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'HTML' }),
-    });
-    if (!res.ok) console.error('Telegram error:', await res.text());
-  } catch (e) {
-    console.error('Telegram send failed:', e.message);
-  }
+  fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'HTML' }),
+  })
+    .then(r => { if (!r.ok) r.text().then(t => console.error('Telegram error:', t)); })
+    .catch(e => console.error('Telegram send failed:', e.message));
 }
 
 // ── Notification state ──────────────────────────────────────────────────────
