@@ -157,6 +157,7 @@ app.post('/api/slots', (req, res) => {
   data.slots.push(slot);
   writeData(data);
   broadcast(data);
+  sendTelegram(`➕ <b>Новый слот добавлен</b>\n${fmtSlotMsg(slot, user, data.settings.hourlyRate)}`);
   res.json({ slot, users: data.users });
 });
 
@@ -222,6 +223,12 @@ app.put('/api/slots/:id', (req, res) => {
   data.slots[slotIdx] = newSlot;
   writeData(data);
   broadcast(data);
+  const oldTimeStr = `${fmtDate(oldSlot.startDate||oldSlot.date)} ${fmtMin(oldSlot.startMin)}–${fmtMin(oldSlot.endMin)}`;
+  sendTelegram(
+    `✏️ <b>Слот изменён</b>\n` +
+    `<i>Было: ${oldTimeStr} (${(oldUser||{}).name||'?'})</i>\n` +
+    `${fmtSlotMsg(newSlot, newUser, data.settings.hourlyRate)}`
+  );
   res.json({ slot: newSlot, users: data.users });
 });
 
@@ -258,6 +265,7 @@ app.delete('/api/slots/:id', (req, res) => {
   data.slots = data.slots.filter(s => s.id !== req.params.id);
   writeData(data);
   broadcast(data);
+  sendTelegram(`🗑 <b>Слот удалён</b>\n${fmtSlotMsg(slot, user, data.settings.hourlyRate)}`);
   res.json({ ok: true, users: data.users });
 });
 
@@ -271,6 +279,32 @@ function fmtMin(m) {
   const h = Math.floor(m / 60);
   const min = m % 60;
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+function fmtDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+// Build a human-readable slot description for notifications
+function fmtSlotMsg(slot, user, hourlyRate) {
+  const sd = slot.startDate || slot.date;
+  const ed = slot.endDate || slot.date;
+  const isCross = sd !== ed;
+  const timeStr = isCross
+    ? `${fmtDate(sd)} ${fmtMin(slot.startMin)} → ${fmtDate(ed)} ${fmtMin(slot.endMin)}`
+    : `${fmtDate(sd)}  ${fmtMin(slot.startMin)} — ${fmtMin(slot.endMin)}`;
+  const totalMins = slotTotalMinutes(slot);
+  const hours = (totalMins / 60).toFixed(1);
+  const name = user ? user.name : 'Неизвестный';
+  let costLine = '';
+  if (user && !user.isRenter) {
+    costLine = `\n💸 −$${(totalMins / 60 * hourlyRate).toFixed(2)}`;
+  } else if (user && user.isRenter && slot.rentRate != null) {
+    const loss = (hourlyRate - slot.rentRate) * (totalMins / 60);
+    costLine = `\n💰 Аренда $${slot.rentRate}/ч${loss > 0 ? `  (потеря −$${loss.toFixed(2)})` : ''}`;
+  }
+  return `👤 ${name}\n🕐 ${timeStr}\n⏱ ${hours} ч${costLine}`;
 }
 
 async function sendTelegram(text) {
