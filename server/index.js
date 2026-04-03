@@ -315,15 +315,22 @@ function fmtSlotMsg(slot, user, hourlyRate) {
   return `👤 ${name}\n🕐 ${timeStr}\n⏱ ${hours} ч${costLine}`;
 }
 
+// Returns Promise<boolean> — true on success
 function sendTelegram(text) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-  fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return Promise.resolve(false);
+  return fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'HTML' }),
   })
-    .then(r => { if (!r.ok) r.text().then(t => console.error('Telegram error:', t)); })
-    .catch(e => console.error('Telegram send failed:', e.message));
+    .then(r => {
+      if (!r.ok) {
+        r.text().then(t => console.error('Telegram error:', t));
+        return false;
+      }
+      return true;
+    })
+    .catch(e => { console.error('Telegram send failed:', e.message); return false; });
 }
 
 // ── Notification state ──────────────────────────────────────────────────────
@@ -386,15 +393,18 @@ function checkNotifications() {
 
     const minsLeft = slot.endMin - nowMin;
     if (minsLeft >= 5 && minsLeft <= 14 && !isNotifiedEnding(slot.id)) {
-      markNotifiedEnding(slot.id);
       const user = data.users.find(u => u.id === slot.userId);
       const name = user ? user.name : 'Неизвестный';
       console.log(`[notify] sending end-soon for slot ${slot.id}, ${name}, minsLeft=${minsLeft}`);
+      // Mark ONLY after successful send — so failed sends are retried next check
       sendTelegram(
         `⏰ <b>Слот заканчивается через ~${minsLeft} мин</b>\n` +
         `👤 ${name}\n` +
         `🕐 До <b>${fmtMin(slot.endMin)}</b>`
-      );
+      ).then(ok => {
+        if (ok) markNotifiedEnding(slot.id);
+        else console.log(`[notify] will retry end-soon for ${slot.id} (send failed)`);
+      });
     }
   });
 
