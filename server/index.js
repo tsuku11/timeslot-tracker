@@ -341,7 +341,7 @@ function loadNotifState() {
   try {
     if (fs.existsSync(NOTIF_FILE)) return JSON.parse(fs.readFileSync(NOTIF_FILE, 'utf-8'));
   } catch {}
-  return { notifiedEnding: [], lastGapNotifiedAt: 0 };
+  return { notifiedEnding: [], notifiedEnded: [], lastGapNotifiedAt: 0 };
 }
 function saveNotifState(state) {
   try { fs.writeFileSync(NOTIF_FILE, JSON.stringify(state)); } catch {}
@@ -358,10 +358,18 @@ function markNotifiedEnding(id) {
     saveNotifState(notifState);
   }
 }
+function isNotifiedEnded(id) { return (notifState.notifiedEnded || []).includes(id); }
+function markNotifiedEnded(id) {
+  if (!notifState.notifiedEnded) notifState.notifiedEnded = [];
+  if (!notifState.notifiedEnded.includes(id)) {
+    notifState.notifiedEnded.push(id);
+    saveNotifState(notifState);
+  }
+}
 function cleanupNotifState(slots) {
-  // Remove old slot ids that no longer exist
   const ids = slots.map(s => s.id);
   notifState.notifiedEnding = notifState.notifiedEnding.filter(id => ids.includes(id));
+  notifState.notifiedEnded = (notifState.notifiedEnded || []).filter(id => ids.includes(id));
   saveNotifState(notifState);
 }
 
@@ -408,9 +416,32 @@ function checkNotifications() {
     }
   });
 
+  // 2) Slot just ended: fire within 0–4 min after endMin
+  data.slots.forEach(slot => {
+    const sd = slot.startDate || slot.date;
+    const ed = slot.endDate || slot.date;
+    if (ed !== todayStr) return;
+    if (sd > todayStr) return;
+
+    const minsSinceEnd = nowMin - slot.endMin;
+    if (minsSinceEnd >= 0 && minsSinceEnd <= 4 && !isNotifiedEnded(slot.id)) {
+      const user = data.users.find(u => u.id === slot.userId);
+      const name = user ? user.name : 'Неизвестный';
+      console.log(`[notify] sending ended for slot ${slot.id}, ${name}`);
+      sendTelegram(
+        `🔴 <b>Слот завершён</b>\n` +
+        `👤 ${name}\n` +
+        `🕐 <b>${fmtMin(slot.startMin)} — ${fmtMin(slot.endMin)}</b>`
+      ).then(ok => {
+        if (ok) markNotifiedEnded(slot.id);
+        else console.log(`[notify] will retry ended for ${slot.id} (send failed)`);
+      });
+    }
+  });
+
   cleanupNotifState(data.slots);
 
-  // 2) No slot for current + next 10 min → alert (throttle 30 min)
+  // 3) No slot for current + next 10 min → alert (throttle 30 min)
   const coverNow  = getSlotCoverageAt(data.slots, todayStr, nowMin).length > 0;
   const coverSoon = getSlotCoverageAt(data.slots, todayStr, Math.min(nowMin + 10, 1439)).length > 0;
 
